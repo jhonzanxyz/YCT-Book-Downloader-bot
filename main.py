@@ -12,9 +12,9 @@ from PIL import Image, UnidentifiedImageError
 from fpdf import FPDF
 
 # Bot configurations
-API_ID = "24250238"  # Your API_ID
-API_HASH = "cb3f118ce5553dc140127647edcf3720"  # Your API_HASH
-BOT_TOKEN = "6687465225:AAHF-yb3LNKeFZzJUQEZIj9zgpp6k-o56qo"  # Your BOT_TOKEN
+API_ID = "23298276"  # Your API_ID
+API_HASH = "0fa5ea46f81eb24548cfc66b5d0f6107"  # Your API_HASH
+BOT_TOKEN = "8098279575:AAGAMKgRgSW4b0TvbE6njoYtpntTCiONw3E"  # Your BOT_TOKEN
 
 # Initialize the bot
 app = Client("book_downloader_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
