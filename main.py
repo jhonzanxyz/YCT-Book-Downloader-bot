@@ -28,8 +28,8 @@ executor = ThreadPoolExecutor(max_workers=5)
 # Step 1: Start command
 
 # Cookie configuration using environment variables
-CI_DATABASE = os.getenv("CI_DATABASE", "be31ceea64aad5111021779f7eff1dee54cc576b")
-CI_SESSION = os.getenv("CI_SESSION", "92159a1e9020cd6a20a6ca76689ca215e9d5339b")
+CI_DATABASE = os.getenv("CI_DATABASE", "286dbaf9a7ca6c62546cddfac56833b3860f5c53")
+CI_SESSION = os.getenv("CI_SESSION", "880b1fcdd0d4b9e6cc88f979e217e3136184665b")
 
 
 def get_cookies():
