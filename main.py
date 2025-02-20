@@ -15,10 +15,7 @@ API_ID = "23694600"
 API_HASH = "7bf5cc011eeab9270463dbb194689b51"
 BOT_TOKEN = "8136229928:AAGqfv2GDFuia-gFBzBAwBsXIUM5a5_0LxM"
 
-# Initialize the bot
 app = Client("book_downloader_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-# Store ongoing tasks
 user_tasks = {}
 
 # Cookie configuration
@@ -81,6 +78,14 @@ async def handle_book_id(client, message: Message):
         status = await message.reply("Got it! Fetching book details...")
         await download_book(client, status, message, user_task)
 
+def verify_image(image_path):
+    try:
+        with Image.open(image_path) as img:
+            img.verify()
+            return True
+    except:
+        return False
+
 def download_page(page: int, book_id: str, user_folder: str):
     page_url = f"https://yctpublication.com/getPage/{book_id}/{page}"
     output_file = f"{user_folder}{page:03d}.jpg"
@@ -94,36 +99,54 @@ def download_page(page: int, book_id: str, user_folder: str):
     }
 
     try:
-        response = requests.get(page_url, headers=headers)
-        if response.status_code == 200:
+        response = requests.get(page_url, headers=headers, timeout=30)
+        if response.status_code == 200 and len(response.content) > 0:
             with open(output_file, "wb") as f:
                 f.write(response.content)
-            return True
+            # Verify if the downloaded file is a valid image
+            if verify_image(output_file):
+                return True
+            else:
+                if os.path.exists(output_file):
+                    os.remove(output_file)
+                return False
     except Exception as e:
         print(f"Error downloading page {page}: {e}")
+        if os.path.exists(output_file):
+            os.remove(output_file)
     return False
 
-async def create_pdf(image_paths, output_pdf_path):
+def create_pdf(image_folder, output_pdf_path, total_pages):
     try:
-        pdf = FPDF(unit='pt')
-        for image_path in sorted(image_paths):
-            try:
-                if os.path.exists(image_path):
-                    img = Image.open(image_path)
-                    img_width, img_height = img.size
-                    # Convert to RGB if necessary
-                    if img.mode != 'RGB':
-                        img = img.convert('RGB')
-                    # Add page with image size
-                    pdf.add_page(format=(img_width, img_height))
-                    pdf.image(image_path, 0, 0, img_width, img_height)
-            except Exception as e:
-                print(f"Error processing {image_path}: {e}")
-                continue
-        pdf.output(output_pdf_path, 'F')
-        return True
+        pdf = FPDF()
+        successful_pages = 0
+
+        for i in range(1, total_pages + 1):
+            image_path = f"{image_folder}{i:03d}.jpg"
+            if os.path.exists(image_path) and verify_image(image_path):
+                try:
+                    with Image.open(image_path) as img:
+                        # Convert image to RGB if necessary
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        width, height = img.size
+                        # Convert pixels to points (assuming 72 DPI)
+                        width_pt = width * 72 / 96
+                        height_pt = height * 72 / 96
+                        # Add page with proper dimensions
+                        pdf.add_page(format=(width_pt, height_pt))
+                        pdf.image(image_path, 0, 0, width_pt, height_pt)
+                        successful_pages += 1
+                except Exception as e:
+                    print(f"Error processing page {i}: {e}")
+                    continue
+
+        if successful_pages > 0:
+            pdf.output(output_pdf_path)
+            return True
+        return False
     except Exception as e:
-        print(f"PDF creation error: {e}")
+        print(f"Error creating PDF: {e}")
         return False
 
 async def download_book(client, status, message: Message, user_task: dict):
@@ -151,35 +174,39 @@ async def download_book(client, status, message: Message, user_task: dict):
         await status.edit(f"📚 Downloading: {book_name}\n📄 Pages: {no_of_pages}")
 
         # Download pages
+        successful_downloads = 0
         loop = asyncio.get_event_loop()
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
             for page in range(1, no_of_pages + 1):
                 future = loop.run_in_executor(executor, download_page, page, book_id, user_folder)
                 futures.append(future)
-            await asyncio.gather(*futures)
+            results = await asyncio.gather(*futures)
+            successful_downloads = sum(1 for r in results if r)
+
+        if successful_downloads == 0:
+            raise Exception("Failed to download any pages")
 
         await status.edit("📑 Creating PDF...")
 
-        # Create PDF
         pdf_path = f"{user_folder}{book_name}.pdf"
-        image_paths = [f"{user_folder}{i:03d}.jpg" for i in range(1, no_of_pages + 1)]
-        
-        if await create_pdf(image_paths, pdf_path):
-            await status.edit("📤 Uploading PDF...")
-            await client.send_document(
-                chat_id=user_id,
-                document=pdf_path,
-                caption=f"📚 {book_name}\n📄 {no_of_pages} pages"
-            )
-            await status.delete()
+        if create_pdf(user_folder, pdf_path, no_of_pages):
+            if os.path.exists(pdf_path) and os.path.getsize(pdf_path) > 1000:  # Check if PDF size is reasonable
+                await status.edit("📤 Uploading PDF...")
+                await client.send_document(
+                    chat_id=user_id,
+                    document=pdf_path,
+                    caption=f"📚 {book_name}\n📄 {successful_downloads} pages successfully downloaded"
+                )
+                await status.delete()
+            else:
+                raise Exception("Created PDF is invalid or too small")
         else:
             raise Exception("Failed to create PDF")
 
     except Exception as e:
         await message.reply(f"❌ Error: {str(e)}")
     finally:
-        # Cleanup
         if os.path.exists(user_folder):
             shutil.rmtree(user_folder)
         user_tasks.pop(user_id, None)
