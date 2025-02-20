@@ -4,26 +4,22 @@ import asyncio
 import requests
 from pyrogram import Client, filters
 from pyrogram.types import Message
-import img2pdf
+from PIL import Image
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
-from PIL import Image, UnidentifiedImageError
 from fpdf import FPDF
 
 # Bot configurations
-API_ID = "23694600"
-API_HASH = "7bf5cc011eeab9270463dbb194689b51"
-BOT_TOKEN = "8136229928:AAGqfv2GDFuia-gFBzBAwBsXIUM5a5_0LxM"
+API_ID = "24250238"
+API_HASH = "cb3f118ce5553dc140127647edcf3720"
+BOT_TOKEN = "6687465225:AAHF-yb3LNKeFZzJUQEZIj9zgpp6k-o56qo"
 
 # Initialize the bot
 app = Client("book_downloader_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 # Store ongoing tasks
 user_tasks = {}
-
-# ThreadPoolExecutor for parallel downloads
-executor = ThreadPoolExecutor(max_workers=5)
 
 # Cookie configuration
 CI_DATABASE = os.getenv("CI_DATABASE", "286dbaf9a7ca6c62546cddfac56833b3860f5c53")
@@ -66,9 +62,10 @@ async def cancel_command(client, message: Message):
         await message.reply("You don't have any ongoing tasks.")
         return
     user_folder = f"downloads/{user_id}/"
-    shutil.rmtree(user_folder, ignore_errors=True)
+    if os.path.exists(user_folder):
+        shutil.rmtree(user_folder)
     user_tasks.pop(user_id, None)
-    await message.reply("Your task has been canceled and all temporary data has been deleted.")
+    await message.reply("Your task has been canceled.")
 
 @app.on_message(filters.text)
 async def handle_book_id(client, message: Message):
@@ -86,7 +83,7 @@ async def handle_book_id(client, message: Message):
 
 def download_page(page: int, book_id: str, user_folder: str):
     page_url = f"https://yctpublication.com/getPage/{book_id}/{page}"
-    output_file = f"{user_folder}{page:03d}.jpg"  # Using 3-digit padding for correct ordering
+    output_file = f"{user_folder}{page:03d}.jpg"
     
     headers = {
         "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
@@ -106,32 +103,27 @@ def download_page(page: int, book_id: str, user_folder: str):
         print(f"Error downloading page {page}: {e}")
     return False
 
-async def create_pdf_from_images(image_paths, output_pdf_path):
+async def create_pdf(image_paths, output_pdf_path):
     try:
-        # Sort image paths to ensure correct page order
-        image_paths.sort()
-        
-        # Filter valid images and convert to RGB if needed
-        valid_images = []
-        for img_path in image_paths:
+        pdf = FPDF(unit='pt')
+        for image_path in sorted(image_paths):
             try:
-                with Image.open(img_path) as img:
+                if os.path.exists(image_path):
+                    img = Image.open(image_path)
+                    img_width, img_height = img.size
+                    # Convert to RGB if necessary
                     if img.mode != 'RGB':
-                        rgb_img = img.convert('RGB')
-                        rgb_img.save(img_path)
-                    valid_images.append(img_path)
+                        img = img.convert('RGB')
+                    # Add page with image size
+                    pdf.add_page(format=(img_width, img_height))
+                    pdf.image(image_path, 0, 0, img_width, img_height)
             except Exception as e:
-                print(f"Error processing image {img_path}: {e}")
+                print(f"Error processing {image_path}: {e}")
                 continue
-
-        if valid_images:
-            # Use img2pdf for better quality
-            with open(output_pdf_path, "wb") as f:
-                f.write(img2pdf.convert(valid_images))
-            return True
-        return False
+        pdf.output(output_pdf_path, 'F')
+        return True
     except Exception as e:
-        print(f"Error creating PDF: {e}")
+        print(f"PDF creation error: {e}")
         return False
 
 async def download_book(client, status, message: Message, user_task: dict):
@@ -141,7 +133,6 @@ async def download_book(client, status, message: Message, user_task: dict):
     os.makedirs(user_folder, exist_ok=True)
 
     try:
-        # Get book details
         response = requests.get(f"https://yctpublication.com/master/api/MasterController/bookdetails?bookid={book_id}")
         if response.status_code != 200:
             raise Exception("Failed to fetch book details")
@@ -159,7 +150,7 @@ async def download_book(client, status, message: Message, user_task: dict):
 
         await status.edit(f"📚 Downloading: {book_name}\n📄 Pages: {no_of_pages}")
 
-        # Download pages in parallel
+        # Download pages
         loop = asyncio.get_event_loop()
         with ThreadPoolExecutor(max_workers=10) as executor:
             futures = []
@@ -174,7 +165,7 @@ async def download_book(client, status, message: Message, user_task: dict):
         pdf_path = f"{user_folder}{book_name}.pdf"
         image_paths = [f"{user_folder}{i:03d}.jpg" for i in range(1, no_of_pages + 1)]
         
-        if await create_pdf_from_images(image_paths, pdf_path):
+        if await create_pdf(image_paths, pdf_path):
             await status.edit("📤 Uploading PDF...")
             await client.send_document(
                 chat_id=user_id,
@@ -189,7 +180,8 @@ async def download_book(client, status, message: Message, user_task: dict):
         await message.reply(f"❌ Error: {str(e)}")
     finally:
         # Cleanup
-        shutil.rmtree(user_folder, ignore_errors=True)
+        if os.path.exists(user_folder):
+            shutil.rmtree(user_folder)
         user_tasks.pop(user_id, None)
 
 app.run()
