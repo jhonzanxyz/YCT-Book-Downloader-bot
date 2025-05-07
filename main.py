@@ -11,9 +11,9 @@ from concurrent.futures import ThreadPoolExecutor
 from fpdf import FPDF
 
 # Bot configurations
-API_ID = "23694600"
-API_HASH = "7bf5cc011eeab9270463dbb194689b51"
-BOT_TOKEN = "8136229928:AAGqfv2GDFuia-gFBzBAwBsXIUM5a5_0LxM"
+API_ID = "29344139"
+API_HASH = "6972ba754ccab4894a193ac7b5150325"
+BOT_TOKEN = "7842780078:AAG-8EEvMIq9iofWEkTgIc_HdCQn2fq5j14"
 
 app = Client("book_downloader_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 user_tasks = {}
