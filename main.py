@@ -156,7 +156,7 @@ async def download_book(client, status, message: Message, user_task: dict):
     os.makedirs(user_folder, exist_ok=True)
 
     try:
-        response = requests.get(f"https://yctpublication.com/master/api/MasterController/bookdetails?bookid={book_id}")
+        response = requests.get(f"https://yctpublication.com/master/api/MasterController/bookdetails?bookid={2530}")
         if response.status_code != 200:
             raise Exception("Failed to fetch book details")
 
